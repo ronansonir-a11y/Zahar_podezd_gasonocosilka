@@ -10,6 +10,7 @@
 <body>
   <div id="game-root">
     <div id="canvas-wrap"></div>
+    <div id="vignette"></div>
     <div id="flash"></div>
 
     <div id="hud" class="hud hidden">
@@ -28,6 +29,7 @@
           <span>ГАЗ / БЕНЗИН</span>
           <div class="bar"><i id="fuel-fill"></i></div>
         </div>
+        <div id="perf" class="perf"><b id="fps">60 FPS</b><span id="quality-label">АВТО</span></div>
       </div>
 
       <div id="powerups" class="powerups">
@@ -84,8 +86,14 @@
           <div><span class="key">ЭТАЖ</span> каждые 250 м новый цвет и выше скорость</div>
           <div><span class="key">⚠</span> каждые 500 м приходит старший по подъезду</div>
         </div>
+        <div class="quality-picker">
+          <span>ГРАФИКА</span>
+          <button type="button" class="q-btn active" data-quality="auto">АВТО</button>
+          <button type="button" class="q-btn" data-quality="high">МАКС</button>
+          <button type="button" class="q-btn" data-quality="low">ЭКОНОМ</button>
+        </div>
         <button id="start-btn" type="button" class="big-btn">ПОЕХАЛИ!</button>
-        <small>3 жизни · бесконечный подъезд · бонусы и босс · без интернета</small>
+        <small>3 жизни · PBR-свет, мягкие тени и авто-FPS · без интернета</small>
       </div>
     </div>
 

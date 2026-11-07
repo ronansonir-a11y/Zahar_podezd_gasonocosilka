@@ -3,6 +3,7 @@ package com.arena.zahar.mower;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -35,6 +36,10 @@ public class MainActivity extends Activity {
         webView.setHorizontalScrollBarEnabled(false);
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         webView.setWebViewClient(new WebViewClient());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Keep the GPU renderer alive on mid-range devices under memory pressure.
+            webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
+        }
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -58,6 +63,10 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        settings.setTextZoom(100);
+        settings.setEnableSmoothTransition(false);
+        settings.setBlockNetworkLoads(true);
+        settings.setOffscreenPreRaster(false);
 
         setContentView(webView);
         hideSystemUi();
