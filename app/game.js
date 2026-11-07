@@ -27,6 +27,8 @@
     speed: $('speed'),
     lives: $('lives'),
     fuelFill: $('fuel-fill'),
+    fps: $('fps'),
+    qualityLabel: $('quality-label'),
     floor: $('floor'),
     powerups: $('powerups'),
     powerShield: $('power-shield'),
@@ -81,14 +83,27 @@
     shake: 0,
     waveTimer: 1.2,
     opponentCooldown: 7,
-    opponent: { active: false, x: 0, z: -40, t: 0, drops: 0, taunt: '' }
+    opponent: { active: false, x: 0, z: -40, t: 0, drops: 0, taunt: '' },
+    quality: 'auto',
+    renderScale: 1.15,
+    shadowsEnabled: true,
+    fps: 60,
+    fpsAccum: 0,
+    fpsFrames: 0,
+    lowTicks: 0,
+    highTicks: 0
   };
 
   try {
     state.best = parseInt(window.localStorage.getItem('zahar_mower_best') || '0', 10) || 0;
+    var savedQuality = window.localStorage.getItem('zahar_quality');
+    if (savedQuality === 'auto' || savedQuality === 'high' || savedQuality === 'low') {
+      state.quality = savedQuality;
+    }
   } catch (e) {
     state.best = 0;
   }
+  state.renderScale = state.quality === 'low' ? 0.85 : (state.quality === 'high' ? 1.25 : 1.15);
 
   var input = { left: false, right: false, gas: false, drag: 0 };
   var heldKeys = {};
@@ -100,6 +115,10 @@
   var textures = {};
   var floorTex, wallTex, ceilingTex, shadowTex;
   var wallMat;
+  var glowTex, poolTex, floorNormal, wallNormal, envTex;
+  var dirLight, hemiLight, fillLight, rimLight;
+  var fogBase, fogTint;
+  var dustPoints, dustPositions, dustGeometry;
   var playerGroup, playerBodySprite, playerHeadSprite, bladeGroup;
   var wheels = [];
   var opponentGroup, opponentSprite;
@@ -177,6 +196,7 @@
   var POWER_KINDS = ['shield', 'magnet', 'double'];
   var BOSS_DURATION = 8;
   var FLOOR_COLORS = [0xffffff, 0xd9e9ff, 0xffe1c2, 0xd9ffd9, 0xf1d9ff, 0xffe0e0];
+  var QUALITY_LABELS = { auto: 'АВТО', high: 'МАКС', low: 'ЭКОНОМ' };
 
   /* ------------------------------------------------------------------ audio */
   var sound = {
@@ -361,6 +381,118 @@
     label.textContent = active ? Math.ceil(time) + 'с' : '0с';
   }
 
+  function applyQuality() {
+    if (!renderer) { return; }
+    var dpr = window.devicePixelRatio || 1;
+    var ratio;
+    if (state.quality === 'high') {
+      ratio = Math.min(1.5, Math.max(1.25, dpr));
+    } else if (state.quality === 'low') {
+      ratio = 0.85;
+    } else {
+      ratio = clamp(state.renderScale, 0.85, 1.25);
+    }
+    renderer.setPixelRatio(ratio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    var wantShadows = state.quality !== 'low' &&
+      (state.quality !== 'auto' || state.renderScale >= 0.95);
+    state.shadowsEnabled = wantShadows;
+    if (renderer.shadowMap) {
+      renderer.shadowMap.enabled = wantShadows;
+      renderer.shadowMap.needsUpdate = true;
+    }
+    if (dirLight) {
+      dirLight.castShadow = wantShadows;
+      var sz = state.quality === 'low' ? 512 : 1024;
+      dirLight.shadow.mapSize.set(sz, sz);
+      if (dirLight.shadow.map) {
+        dirLight.shadow.map.dispose();
+        dirLight.shadow.map = null;
+      }
+    }
+    corridorSegments.forEach(function (seg) {
+      if (seg.userData.glow) { seg.userData.glow.visible = state.quality !== 'low'; }
+      if (seg.userData.pool) { seg.userData.pool.visible = state.quality !== 'low'; }
+    });
+    pickups.forEach(function (p) {
+      if (p.userData.glow) { p.userData.glow.visible = state.quality !== 'low'; }
+    });
+    if (dustPoints) { dustPoints.visible = state.quality !== 'low'; }
+    if (ui.qualityLabel) {
+      ui.qualityLabel.textContent = QUALITY_LABELS[state.quality] +
+        (state.quality === 'auto' ? ' · ' + Math.round(ratio * 100) + '%' : '');
+    }
+  }
+
+  function setQuality(q) {
+    if (!QUALITY_LABELS[q]) { return; }
+    state.quality = q;
+    state.renderScale = q === 'low' ? 0.85 : (q === 'high' ? 1.25 : 1.15);
+    state.lowTicks = 0;
+    state.highTicks = 0;
+    try { window.localStorage.setItem('zahar_quality', q); } catch (e) {}
+    applyQuality();
+    updateQualityButtons();
+    toast('Графика: ' + QUALITY_LABELS[q]);
+  }
+
+  function updateQualityButtons() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-quality]'), function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-quality') === state.quality);
+    });
+  }
+
+  function updatePerf(dt) {
+    state.fpsAccum += dt;
+    state.fpsFrames++;
+    if (state.fpsAccum < 1) { return; }
+    var fps = state.fpsFrames / state.fpsAccum;
+    state.fps = fps;
+    state.fpsAccum = 0;
+    state.fpsFrames = 0;
+    if (ui.fps) { ui.fps.textContent = Math.round(fps) + ' FPS'; }
+    if (state.quality !== 'auto') { return; }
+    if (fps < 42) { state.lowTicks++; state.highTicks = 0; }
+    else if (fps > 55) { state.highTicks++; state.lowTicks = 0; }
+    else { state.lowTicks = 0; state.highTicks = 0; }
+    if (state.lowTicks >= 2 && state.renderScale > 0.85) {
+      state.renderScale = Math.max(0.85, state.renderScale - 0.15);
+      applyQuality();
+      state.lowTicks = 0;
+      toast('Авто: снижаю разрешение для плавности');
+    } else if (state.highTicks >= 4 && state.renderScale < 1.25) {
+      state.renderScale = Math.min(1.25, state.renderScale + 0.10);
+      applyQuality();
+      state.highTicks = 0;
+    }
+  }
+
+  function updateLighting(dt) {
+    if (!dirLight) { return; }
+    var x = state.playerX * 0.25;
+    dirLight.position.set(x + 5.5, 9.2, 8);
+    dirLight.target.position.set(x, 0, -9);
+    dirLight.target.updateMatrixWorld();
+    var flicker = 0.96 + Math.sin(state.t * 8.3) * 0.025 + Math.sin(state.t * 2.1) * 0.015;
+    dirLight.intensity = (state.shadowsEnabled ? 1.18 : 0.95) * flicker;
+    if (hemiLight) { hemiLight.intensity = 0.62 + Math.sin(state.t * 0.6) * 0.02; }
+    if (fillLight) {
+      fillLight.position.set(x, 3.7, 4);
+      fillLight.intensity = 1.05 + Math.sin(state.t * 9) * 0.06;
+    }
+    if (rimLight) {
+      rimLight.position.set(x, 3.3, -12);
+      rimLight.intensity = 0.50 + Math.sin(state.t * 5) * 0.05;
+    }
+    if (scene.fog && fogBase && fogTint) {
+      var fc = FLOOR_COLORS[(state.floor - 1) % FLOOR_COLORS.length];
+      fogTint.setHex(fc).multiplyScalar(0.10).lerp(fogBase, 0.85);
+      scene.fog.color.lerp(fogTint, Math.min(1, dt * 0.8));
+      if (scene.background && scene.background.copy) { scene.background.copy(scene.fog.color); }
+    }
+  }
+
   /* --------------------------------------------------------------- textures */
   function loadTextures(onDone) {
     var manager = new THREE.LoadingManager();
@@ -403,6 +535,17 @@
     var o = { map: textures[name] || null, color: color === undefined ? 0xffffff : color };
     if (opts) { Object.keys(opts).forEach(function (k) { o[k] = opts[k]; }); }
     return new THREE.MeshLambertMaterial(o);
+  }
+
+  function pbr(name, color, opts) {
+    var o = {
+      map: textures[name] || null,
+      color: color === undefined ? 0xffffff : color,
+      roughness: 0.7,
+      metalness: 0.05
+    };
+    if (opts) { Object.keys(opts).forEach(function (k) { o[k] = opts[k]; }); }
+    return new THREE.MeshStandardMaterial(o);
   }
 
   function basicMat(name, color, opts) {
@@ -453,11 +596,98 @@
     return t;
   }
 
+  function makeGlowTexture() {
+    var c = document.createElement('canvas');
+    c.width = c.height = 128;
+    var ctx = c.getContext('2d');
+    var g = ctx.createRadialGradient(64, 64, 2, 64, 64, 62);
+    g.addColorStop(0, 'rgba(255,240,195,0.95)');
+    g.addColorStop(0.28, 'rgba(255,190,90,0.42)');
+    g.addColorStop(0.65, 'rgba(255,145,45,0.12)');
+    g.addColorStop(1, 'rgba(255,130,30,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    var t = new THREE.CanvasTexture(c);
+    t.needsUpdate = true;
+    return t;
+  }
+
+  function makeNormalMap(size, seed, strength) {
+    var data = new Uint8Array(size * size * 4);
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        var a = (x + seed * 13) * 0.21;
+        var b = y * 0.17;
+        var c = (x + y + seed * 7) * 0.11;
+        var dx = Math.cos(a) * Math.cos(b) * 0.21 + Math.cos(c) * 0.08;
+        var dy = -Math.sin(a) * Math.sin(b) * 0.17 + Math.cos(c) * 0.08;
+        var nx = -dx * strength;
+        var ny = -dy * strength;
+        var nz = 1;
+        var len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        var i = (y * size + x) * 4;
+        data[i] = Math.round((nx / len * 0.5 + 0.5) * 255);
+        data[i + 1] = Math.round((ny / len * 0.5 + 0.5) * 255);
+        data[i + 2] = Math.round((nz / len * 0.5 + 0.5) * 255);
+        data[i + 3] = 255;
+      }
+    }
+    var t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(12, 12);
+    t.needsUpdate = true;
+    return t;
+  }
+
+  function makeEnvTexture() {
+    var w = 64, h = 32;
+    var data = new Uint8Array(w * h * 4);
+    for (var y = 0; y < h; y++) {
+      var v = y / (h - 1);
+      for (var x = 0; x < w; x++) {
+        var side = Math.abs(x / (w - 1) - 0.5) * 2;
+        var r, g, b;
+        if (v < 0.45) {
+          var k = v / 0.45;
+          r = lerp(255, 95, k);
+          g = lerp(220, 135, k);
+          b = lerp(175, 195, k);
+        } else {
+          var k2 = (v - 0.45) / 0.55;
+          r = lerp(95, 16, k2);
+          g = lerp(135, 30, k2);
+          b = lerp(195, 52, k2);
+        }
+        var shade = 1 - side * 0.22;
+        var i = (y * w + x) * 4;
+        data[i] = Math.round(r * shade);
+        data[i + 1] = Math.round(g * shade);
+        data[i + 2] = Math.round(b * shade);
+        data[i + 3] = 255;
+      }
+    }
+    var t = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    t.encoding = THREE.sRGBEncoding;
+    t.needsUpdate = true;
+    return t;
+  }
+
+  function enableShadows(obj, cast, receive) {
+    obj.traverse(function (o) {
+      if (o.isMesh) {
+        o.castShadow = !!cast;
+        o.receiveShadow = !!receive;
+      }
+    });
+  }
+
   function makeShadow(rx, rz, opacity) {
     var m = new THREE.Mesh(
       new THREE.PlaneGeometry(rx * 2, rz * 2),
       new THREE.MeshBasicMaterial({
-        map: shadowTex, transparent: true, opacity: opacity || 0.55,
+        map: shadowTex, transparent: true,
+        opacity: (opacity || 0.55) * (state.shadowsEnabled ? 0.52 : 1),
         depthWrite: false, side: THREE.DoubleSide
       })
     );
@@ -468,9 +698,17 @@
 
   /* ------------------------------------------------------------------ scene */
   function buildCorridor() {
-    var floorMat = mat('floor_tile', 0xffffff, { side: THREE.DoubleSide });
-    wallMat = mat('wall_panel', 0xffffff, { side: THREE.DoubleSide });
-    var ceilMat = mat('ceiling', 0xd8d8d8, { side: THREE.DoubleSide });
+    var floorMat = pbr('floor_tile', 0xffffff, {
+      side: THREE.DoubleSide, roughness: 0.52, metalness: 0.08,
+      normalMap: floorNormal, normalScale: new THREE.Vector2(0.32, 0.32),
+      envMapIntensity: 0.35
+    });
+    wallMat = pbr('wall_panel', 0xffffff, {
+      side: THREE.DoubleSide, roughness: 0.86, metalness: 0.02,
+      normalMap: wallNormal, normalScale: new THREE.Vector2(0.20, 0.20),
+      envMapIntensity: 0.22
+    });
+    var ceilMat = pbr('ceiling', 0xd8d8d8, { side: THREE.DoubleSide, roughness: 0.95 });
 
     var floor = makePlane(7.2, 200, floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -487,17 +725,20 @@
     wallR.position.set(3.6, 2.1, -90);
     scene.add(wallR);
 
+    floor.receiveShadow = wallL.receiveShadow = wallR.receiveShadow = true;
+
     var ceiling = makePlane(7.2, 200, ceilMat);
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(0, 4.22, -90);
     scene.add(ceiling);
 
     // Dark skirting boards and ceiling cornices add depth to the corridor.
-    var dark = mat('metal_dark', 0x1b2226);
-    addBox(scene, 0.12, 0.24, 200, dark, -3.52, 0.12, -90);
-    addBox(scene, 0.12, 0.24, 200, dark, 3.52, 0.12, -90);
-    addBox(scene, 0.16, 0.14, 200, dark, -3.50, 4.12, -90);
-    addBox(scene, 0.16, 0.14, 200, dark, 3.50, 4.12, -90);
+    var dark = pbr('metal_dark', 0x1b2226, { roughness: 0.48, metalness: 0.38 });
+    var b1 = addBox(scene, 0.12, 0.24, 200, dark, -3.52, 0.12, -90);
+    var b2 = addBox(scene, 0.12, 0.24, 200, dark, 3.52, 0.12, -90);
+    var b3 = addBox(scene, 0.16, 0.14, 200, dark, -3.50, 4.12, -90);
+    var b4 = addBox(scene, 0.16, 0.14, 200, dark, 3.50, 4.12, -90);
+    [b1, b2, b3, b4].forEach(function (m) { m.receiveShadow = true; });
   }
 
   function randomizeSegment(seg) {
@@ -514,6 +755,8 @@
     if (seg.userData.bollard) {
       seg.userData.bollard.visible = Math.random() < 0.34;
     }
+    if (seg.userData.glow) { seg.userData.glow.visible = state.quality !== 'low'; }
+    if (seg.userData.pool) { seg.userData.pool.visible = state.quality !== 'low'; }
   }
 
   function buildSegment(index) {
@@ -522,26 +765,26 @@
     g.userData.index = index;
 
     var side = index % 2 === 0 ? -1 : 1;
-    var doorMat = basicMat('door_1', 0xffffff, { side: THREE.DoubleSide });
+    var doorMat = pbr('door_1', 0xffffff, { side: THREE.DoubleSide, roughness: 0.78, metalness: 0.05, envMapIntensity: 0.25 });
     var door = makePlane(1.18, 2.25, doorMat);
     door.rotation.y = side * Math.PI / 2;
     door.position.set(side * 3.55, 1.55, -1.4);
     g.add(door);
     g.userData.doorMat = doorMat;
 
-    var frameMat = mat('metal_dark', 0x20262a);
+    var frameMat = pbr('metal_dark', 0x20262a, { roughness: 0.45, metalness: 0.45 });
     addBox(g, 0.10, 2.42, 1.38, frameMat, side * 3.50, 1.55, -1.4, 0, 0, 0);
     // thin frame line in front of the door
     addBox(g, 0.04, 2.42, 0.06, frameMat, side * 3.47, 1.55, -2.10);
     addBox(g, 0.04, 2.42, 0.06, frameMat, side * 3.47, 1.55, -0.70);
 
-    var mailboxMat = basicMat('mailbox', 0xffffff, { side: THREE.DoubleSide });
+    var mailboxMat = pbr('mailbox', 0xffffff, { side: THREE.DoubleSide, roughness: 0.62, metalness: 0.22 });
     var mailbox = makePlane(1.0, 0.72, mailboxMat);
     mailbox.rotation.y = -side * Math.PI / 2;
     mailbox.position.set(-side * 3.54, 1.35, 1.5);
     g.add(mailbox);
 
-    var posterMat = basicMat('poster_no', 0xffffff, { side: THREE.DoubleSide });
+    var posterMat = pbr('poster_no', 0xffffff, { side: THREE.DoubleSide, roughness: 0.90 });
     var poster = makePlane(0.78, 1.15, posterMat);
     poster.rotation.y = -side * Math.PI / 2;
     poster.position.set(-side * 3.53, 2.65, -2.0);
@@ -554,13 +797,35 @@
     lamp.rotation.x = Math.PI / 2;
     lamp.position.set(0, 4.15, 0.4);
     g.add(lamp);
-    addBox(g, 1.05, 0.05, 0.55, mat('metal_dark', 0x1d2224), 0, 4.18, 0.4);
+    addBox(g, 1.05, 0.05, 0.55, pbr('metal_dark', 0x1d2224, { roughness: 0.5, metalness: 0.4 }), 0, 4.18, 0.4);
+
+    // Fake bloom: additive glow around the lamp + warm light pool on the floor.
+    var glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, color: 0xffd9a0, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.55
+    }));
+    glow.scale.set(2.6, 1.5, 1);
+    glow.position.set(0, 3.98, 0.4);
+    g.add(glow);
+    var pool = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.4, 5.2),
+      new THREE.MeshBasicMaterial({
+        map: poolTex, color: 0xffc978, transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+        opacity: 0.16, side: THREE.DoubleSide
+      })
+    );
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(0, 0.045, 0.4);
+    g.add(pool);
+    g.userData.glow = glow;
+    g.userData.pool = pool;
 
     // A nod to photo #2: the neighbour standing on a white/black bollard.
     var bollard = new THREE.Group();
     var bx = (index % 4 < 2) ? -2.95 : 2.95;
     var bz = -2.6;
-    var post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.95, 10), mat('brick', 0xd8d8d0));
+    var post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.95, 10), pbr('brick', 0xd8d8d0, { roughness: 0.8 }));
     post.position.set(bx, 0.48, bz);
     bollard.add(post);
     var postBottom = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.155, 0.30, 10), mat('metal_dark', 0x222426));
@@ -572,6 +837,9 @@
     g.add(bollard);
     g.userData.bollard = bollard;
 
+    enableShadows(g, false, true);
+    g.userData.glow.castShadow = false;
+    g.userData.pool.receiveShadow = false;
     randomizeSegment(g);
     scene.add(g);
     corridorSegments.push(g);
@@ -581,10 +849,10 @@
     playerGroup = new THREE.Group();
     scene.add(playerGroup);
 
-    var red = mat('mower_red');
-    var dark = mat('metal_dark', 0x262c30);
-    var tire = mat('tire', 0x202224);
-    var hub = mat('metal_dark', 0x8b9296);
+    var red = pbr('mower_red', 0xffffff, { roughness: 0.32, metalness: 0.28, envMapIntensity: 0.55 });
+    var dark = pbr('metal_dark', 0x262c30, { roughness: 0.38, metalness: 0.55, envMapIntensity: 0.65 });
+    var tire = pbr('tire', 0x202224, { roughness: 0.92 });
+    var hub = pbr('metal_dark', 0x8b9296, { roughness: 0.30, metalness: 0.72, envMapIntensity: 0.8 });
 
     playerGroup.add(makeShadow(1.25, 1.5, 0.55));
 
@@ -639,6 +907,7 @@
     playerHeadSprite = makeSprite('face_zahar', 0.74, 0.74);
     playerHeadSprite.position.set(0, 2.34, 0.62);
     playerGroup.add(playerHeadSprite);
+    enableShadows(playerGroup, true, true);
   }
 
   function buildOpponent() {
@@ -648,7 +917,7 @@
     opponentGroup.add(makeShadow(0.62, 0.46, 0.5));
 
     // Slight 3D volume behind the billboard, textured with the real puffer coat.
-    var volume = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), mat('puffer', 0x9a91a8));
+    var volume = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), pbr('puffer', 0x9a91a8, { roughness: 0.82 }));
     volume.scale.set(0.78, 1.05, 0.48);
     volume.position.set(0, 1.48, -0.16);
     opponentGroup.add(volume);
@@ -656,6 +925,7 @@
     opponentSprite = makeSprite('body_neighbor', 1.04, 2.42);
     opponentSprite.position.set(0, 1.28, 0.06);
     opponentGroup.add(opponentSprite);
+    enableShadows(opponentGroup, true, true);
   }
 
   function buildBoss() {
@@ -674,11 +944,15 @@
 
     var halo = new THREE.Mesh(
       new THREE.TorusGeometry(0.75, 0.085, 8, 20),
-      new THREE.MeshLambertMaterial({ color: 0xffd34a, emissive: 0x4a3300 })
+      new THREE.MeshStandardMaterial({
+        color: 0xffd34a, emissive: 0x4a3300,
+        roughness: 0.28, metalness: 0.55, envMapIntensity: 0.9
+      })
     );
     halo.rotation.x = Math.PI / 2;
     halo.position.set(0, 4.55, 0);
     bossGroup.add(halo);
+    enableShadows(bossGroup, true, true);
   }
 
   function buildObstacleObject() {
@@ -741,6 +1015,7 @@
     g.add(bin); children.bin = bin;
 
     g.userData.children = children;
+    enableShadows(g, true, true);
     scene.add(g);
     return g;
   }
@@ -782,8 +1057,17 @@
     power.add(double);
     g.add(power);
 
+    var pickupGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, color: 0xffd34a, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.45
+    }));
+    pickupGlow.scale.set(1.05, 1.05, 1);
+    pickupGlow.position.y = 0.78;
+    g.add(pickupGlow);
+
     g.userData.coin = coin;
     g.userData.fuel = fuel;
+    g.userData.glow = pickupGlow;
     g.userData.power = power;
     g.userData.shield = shield;
     g.userData.magnet = magnet;
@@ -833,19 +1117,77 @@
     scene.add(points);
   }
 
+  function buildDust() {
+    var count = 70;
+    dustPositions = new Float32Array(count * 3);
+    for (var i = 0; i < count; i++) {
+      dustPositions[i * 3] = rand(-3.0, 3.0);
+      dustPositions[i * 3 + 1] = rand(0.4, 3.8);
+      dustPositions[i * 3 + 2] = rand(-52, 8);
+    }
+    dustGeometry = new THREE.BufferGeometry();
+    dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    var material = new THREE.PointsMaterial({
+      color: 0xffe6b0, size: 0.045, transparent: true, opacity: 0.34,
+      depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
+    });
+    dustPoints = new THREE.Points(dustGeometry, material);
+    scene.add(dustPoints);
+  }
+
+  function updateDust(dt, speed) {
+    if (!dustPoints || !dustPoints.visible) { return; }
+    for (var i = 0; i < dustPositions.length / 3; i++) {
+      dustPositions[i * 3 + 2] += speed * dt * 0.35;
+      if (dustPositions[i * 3 + 2] > 8) { dustPositions[i * 3 + 2] -= 60; }
+      dustPositions[i * 3] += Math.sin(state.t * 0.7 + i) * dt * 0.03;
+      dustPositions[i * 3 + 1] += Math.cos(state.t * 0.5 + i) * dt * 0.02;
+    }
+    dustGeometry.attributes.position.needsUpdate = true;
+  }
+
   function buildScene() {
     shadowTex = makeShadowTexture();
-    scene.background = new THREE.Color(0x0b131a);
-    scene.fog = new THREE.Fog(0x101b23, 20, 82);
+    glowTex = makeGlowTexture();
+    poolTex = glowTex;
+    floorNormal = makeNormalMap(64, 3, 0.55);
+    floorNormal.repeat.set(12, 12);
+    wallNormal = makeNormalMap(64, 7, 0.35);
+    wallNormal.repeat.set(20, 2);
+    envTex = makeEnvTexture();
+    scene.environment = envTex;
 
-    var hemi = new THREE.HemisphereLight(0xc8d8ff, 0x2a2518, 0.92);
-    scene.add(hemi);
-    var dir = new THREE.DirectionalLight(0xffe9c0, 0.78);
-    dir.position.set(4, 9, 7);
-    scene.add(dir);
-    var lampLight = new THREE.PointLight(0xffd99a, 1.0, 18);
-    lampLight.position.set(0, 3.7, 3);
-    scene.add(lampLight);
+    fogBase = new THREE.Color(0x0d1720);
+    fogTint = new THREE.Color();
+    scene.background = fogBase.clone();
+    scene.fog = new THREE.Fog(fogBase.clone(), 18, 76);
+
+    hemiLight = new THREE.HemisphereLight(0xbdd4ff, 0x241d18, 0.62);
+    scene.add(hemiLight);
+
+    dirLight = new THREE.DirectionalLight(0xffe3b8, 1.18);
+    dirLight.position.set(5.5, 9.2, 8);
+    dirLight.target.position.set(0, 0, -9);
+    scene.add(dirLight.target);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(1024, 1024);
+    dirLight.shadow.camera.left = -7;
+    dirLight.shadow.camera.right = 7;
+    dirLight.shadow.camera.top = 9;
+    dirLight.shadow.camera.bottom = -5;
+    dirLight.shadow.camera.near = 1;
+    dirLight.shadow.camera.far = 34;
+    dirLight.shadow.bias = -0.00035;
+    dirLight.shadow.normalBias = 0.025;
+    dirLight.shadow.radius = 3;
+    scene.add(dirLight);
+
+    fillLight = new THREE.PointLight(0xffcf8a, 1.05, 20, 1.4);
+    fillLight.position.set(0, 3.7, 4);
+    scene.add(fillLight);
+    rimLight = new THREE.PointLight(0x88bbff, 0.50, 18, 1.3);
+    rimLight.position.set(0, 3.3, -12);
+    scene.add(rimLight);
 
     buildCorridor();
     for (var i = 0; i < SEG_COUNT; i++) { buildSegment(i); }
@@ -854,7 +1196,9 @@
     buildBoss();
     buildPools();
     buildParticles();
+    buildDust();
     resetWorld();
+    applyQuality();
   }
 
   /* --------------------------------------------------------------- gameplay */
@@ -1264,6 +1608,8 @@
     opponentGroup.visible = false;
     bossGroup.visible = false;
     if (wallMat) { wallMat.color.setHex(0xffffff); }
+    if (scene.fog && fogBase) { scene.fog.color.copy(fogBase); }
+    if (scene.background && scene.background.copy && fogBase) { scene.background.copy(fogBase); }
     if (floorTex) { floorTex.offset.set(0, 0); }
     if (wallTex) { wallTex.offset.set(0, 0); }
     if (ceilingTex) { ceilingTex.offset.set(0, 0); }
@@ -1451,10 +1797,15 @@
   function bindEvents() {
     window.addEventListener('resize', function () {
       if (!renderer) { return; }
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      applyQuality();
       camera.aspect = window.innerWidth / Math.max(1, window.innerHeight);
       camera.updateProjectionMatrix();
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-quality]'), function (btn) {
+      btn.addEventListener('click', function () {
+        setQuality(btn.getAttribute('data-quality'));
+      });
     });
 
     document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -1565,6 +1916,8 @@
     try {
       buildScene();
       bindEvents();
+      updateQualityButtons();
+      applyQuality();
       setState('menu');
       state.lastTime = performance.now();
       requestAnimationFrame(loop);
@@ -1592,6 +1945,9 @@
         state.flashTimer -= dt;
         if (state.flashTimer <= 0) { ui.flash.classList.remove('on'); }
       }
+      updateLighting(dt);
+      updateDust(dt, state.mode === 'playing' ? state.speed : 2.2);
+      updatePerf(dt);
       renderer.render(scene, camera);
     } catch (e) {
       console.error(e);
@@ -1609,7 +1965,8 @@
     resume: resumeGame,
     debugBoss: function () { if (state.mode === 'playing') { startBoss(); } },
     debugPower: function (kind) { if (state.mode === 'playing') { collectPower(kind || 'shield'); } },
-    debugSkip: function (metres) { state.distance += metres || 0; }
+    debugSkip: function (metres) { state.distance += metres || 0; },
+    setQuality: setQuality
   };
 
   function init() {
@@ -1619,18 +1976,19 @@
     }
     try {
       renderer = new THREE.WebGLRenderer({
-        antialias: true,
+        antialias: state.quality !== 'low',
         alpha: false,
         powerPreference: 'high-performance'
       });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.setClearColor(0x0b131a, 1);
       renderer.outputEncoding = THREE.sRGBEncoding;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.12;
+      renderer.toneMappingExposure = 1.18;
       ui.canvasWrap.appendChild(renderer.domElement);
       aniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      applyQuality();
     } catch (e) {
       console.error(e);
       showFatal('WebView не смог создать WebGL-контекст. Включите аппаратное ускорение.');
