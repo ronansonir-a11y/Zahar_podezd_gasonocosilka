@@ -1,0 +1,19 @@
+# Local build intermediates and Python environments
+build/
+.buildvenv/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+
+# Local signing material (the APK in dist/ is already signed)
+*.p12
+*.keystore
+*.jks
+*.pem
+*.idsig
+*.log
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
