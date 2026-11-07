@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a1016">
+  <title>Захар: Косилка в подъезде</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-root">
+    <div id="canvas-wrap"></div>
+    <div id="flash"></div>
+
+    <div id="hud" class="hud hidden">
+      <div class="hud-left">
+        <div class="hud-box"><span>ОЧКИ</span><strong id="score">000000</strong></div>
+        <div class="hud-row">
+          <div class="hud-chip"><span>ДИСТАНЦИЯ</span><b id="distance">0 м</b></div>
+          <div class="hud-chip"><span>СКОРОСТЬ</span><b id="speed">0 км/ч</b></div>
+          <div class="hud-chip"><span>ЖИЗНИ</span><b id="lives" class="lives">●●●</b></div>
+        </div>
+      </div>
+      <div class="hud-right">
+        <button id="pause-btn" type="button" class="icon-btn" aria-label="Пауза">❚❚</button>
+        <div class="fuel-box">
+          <span>ГАЗ / БЕНЗИН</span>
+          <div class="bar"><i id="fuel-fill"></i></div>
+        </div>
+      </div>
+      <div id="taunt" class="taunt hidden">
+        <img src="textures/portrait_neighbor.png" alt="Сосед">
+        <span id="taunt-text">Сосед: «Не проедешь!»</span>
+      </div>
+      <div id="toast" class="toast"></div>
+    </div>
+
+    <div id="controls" class="controls hidden">
+      <div class="steer-group">
+        <button type="button" class="ctrl ctrl-arrow" data-control="left" aria-label="Влево">◀</button>
+        <button type="button" class="ctrl ctrl-arrow" data-control="right" aria-label="Вправо">▶</button>
+      </div>
+      <div class="action-group">
+        <button type="button" class="ctrl ctrl-jump" data-control="jump">ПРЫЖОК</button>
+        <button type="button" class="ctrl ctrl-gas" data-control="gas">ГАЗ</button>
+      </div>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="panel menu-panel">
+        <div class="portraits">
+          <div class="portrait-card hero">
+            <img src="textures/portrait_zahar.png" alt="Захар">
+            <span>ЗАХАР</span>
+          </div>
+          <div class="vs">VS</div>
+          <div class="portrait-card villain">
+            <img src="textures/portrait_neighbor.png" alt="Сосед">
+            <span>СОСЕД</span>
+          </div>
+        </div>
+        <h1>КОСИЛКА<br><em>В ПОДЪЕЗДЕ</em></h1>
+        <p class="tagline">Захар прокатился на газонокосилке по коридору. Сосед со второго фото уже расставил вёдра и конусы. Прорвись как можно дальше!</p>
+        <div class="instructions">
+          <div><span class="key">◀ ▶</span> руль или свайп по экрану</div>
+          <div><span class="key">ГАЗ</span> ускорение, тратит бензин</div>
+          <div><span class="key">ПРЫЖОК</span> перескочить низкое препятствие</div>
+          <div><span class="key">★</span> монеты, канистры и скошенная трава дают очки</div>
+        </div>
+        <button id="start-btn" type="button" class="big-btn">ПОЕХАЛИ!</button>
+        <small>3 жизни · бесконечный подъезд · без интернета</small>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="panel small-panel">
+        <h2>ПАУЗА</h2>
+        <p>Двигатель на холостых. Сосед пока не добежал.</p>
+        <button id="resume-btn" type="button" class="big-btn">ПРОДОЛЖИТЬ</button>
+        <button id="restart-pause-btn" type="button" class="ghost-btn">ЗАНОВО</button>
+      </div>
+    </div>
+
+    <div id="gameover" class="overlay hidden">
+      <div class="panel small-panel">
+        <h2>КОСИЛКА ЗАГЛОХЛА!</h2>
+        <p class="result">Счёт: <b id="final-score">0</b><br>Рекорд: <b id="best-score">0</b></p>
+        <p id="gameover-comment" class="comment">Сосед доволен.</p>
+        <button id="restart-btn" type="button" class="big-btn">ЕЩЁ РАЗ</button>
+      </div>
+    </div>
+
+    <div id="loading" class="overlay">
+      <div class="loader">
+        <div class="spinner"></div>
+        <span>Загружаем подъезд и текстуры…</span>
+      </div>
+    </div>
+
+    <div id="fatal" class="overlay hidden">
+      <div class="panel small-panel">
+        <h2>WebGL не запустился</h2>
+        <p id="fatal-text">Попробуйте открыть игру на устройстве с аппаратным ускорением WebView.</p>
+      </div>
+    </div>
+
+    <noscript><div class="overlay"><div class="panel"><h2>Нужен JavaScript</h2></div></div></noscript>
+  </div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
