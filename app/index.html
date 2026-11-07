@@ -19,6 +19,7 @@
           <div class="hud-chip"><span>ДИСТАНЦИЯ</span><b id="distance">0 м</b></div>
           <div class="hud-chip"><span>СКОРОСТЬ</span><b id="speed">0 км/ч</b></div>
           <div class="hud-chip"><span>ЖИЗНИ</span><b id="lives" class="lives">●●●</b></div>
+          <div class="hud-chip floor-chip"><span>ЭТАЖ</span><b id="floor">1</b></div>
         </div>
       </div>
       <div class="hud-right">
@@ -28,6 +29,19 @@
           <div class="bar"><i id="fuel-fill"></i></div>
         </div>
       </div>
+
+      <div id="powerups" class="powerups">
+        <div class="power-chip shield" id="power-shield"><span>ЩИТ</span><b id="power-shield-t">0с</b></div>
+        <div class="power-chip magnet" id="power-magnet"><span>МАГНИТ</span><b id="power-magnet-t">0с</b></div>
+        <div class="power-chip double" id="power-double"><span>×2 ОЧКИ</span><b id="power-double-t">0с</b></div>
+      </div>
+
+      <div id="boss" class="boss hidden">
+        <div class="boss-title">⚠ СТАРШИЙ ПО ПОДЪЕЗДУ ⚠</div>
+        <div class="boss-bar"><i id="boss-fill"></i></div>
+        <span id="boss-text">Сосед позвал старшего!</span>
+      </div>
+
       <div id="taunt" class="taunt hidden">
         <img src="textures/portrait_neighbor.png" alt="Сосед">
         <span id="taunt-text">Сосед: «Не проедешь!»</span>
@@ -66,9 +80,12 @@
           <div><span class="key">ГАЗ</span> ускорение, тратит бензин</div>
           <div><span class="key">ПРЫЖОК</span> перескочить низкое препятствие</div>
           <div><span class="key">★</span> монеты, канистры и скошенная трава дают очки</div>
+          <div><span class="key">◆</span> бонусы: щит, магнит и ×2 к очкам</div>
+          <div><span class="key">ЭТАЖ</span> каждые 250 м новый цвет и выше скорость</div>
+          <div><span class="key">⚠</span> каждые 500 м приходит старший по подъезду</div>
         </div>
         <button id="start-btn" type="button" class="big-btn">ПОЕХАЛИ!</button>
-        <small>3 жизни · бесконечный подъезд · без интернета</small>
+        <small>3 жизни · бесконечный подъезд · бонусы и босс · без интернета</small>
       </div>
     </div>
 

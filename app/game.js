@@ -27,6 +27,17 @@
     speed: $('speed'),
     lives: $('lives'),
     fuelFill: $('fuel-fill'),
+    floor: $('floor'),
+    powerups: $('powerups'),
+    powerShield: $('power-shield'),
+    powerShieldT: $('power-shield-t'),
+    powerMagnet: $('power-magnet'),
+    powerMagnetT: $('power-magnet-t'),
+    powerDouble: $('power-double'),
+    powerDoubleT: $('power-double-t'),
+    boss: $('boss'),
+    bossFill: $('boss-fill'),
+    bossText: $('boss-text'),
     taunt: $('taunt'),
     tauntText: $('taunt-text'),
     toast: $('toast'),
@@ -57,6 +68,11 @@
     lives: 3,
     fuel: 1,
     coins: 0,
+    floor: 1,
+    shield: 0,
+    magnet: 0,
+    doubleT: 0,
+    boss: { active: false, nextAt: 500, t: 0, dropAt: 0, x: 0 },
     playerX: 0,
     steer: 0,
     jumpY: 0,
@@ -83,9 +99,11 @@
   var renderer, scene, camera, aniso = 1;
   var textures = {};
   var floorTex, wallTex, ceilingTex, shadowTex;
+  var wallMat;
   var playerGroup, playerBodySprite, playerHeadSprite, bladeGroup;
   var wheels = [];
   var opponentGroup, opponentSprite;
+  var bossGroup, bossSprite;
   var corridorSegments = [];
   var obstacles = [];
   var pickups = [];
@@ -156,6 +174,9 @@
     bin:    { radius: 0.58, height: 1.05, jumpable: false }
   };
   var TYPE_BAG = ['cone', 'cone', 'cone', 'bucket', 'bucket', 'tire', 'pot', 'bin'];
+  var POWER_KINDS = ['shield', 'magnet', 'double'];
+  var BOSS_DURATION = 8;
+  var FLOOR_COLORS = [0xffffff, 0xd9e9ff, 0xffe1c2, 0xd9ffd9, 0xf1d9ff, 0xffe0e0];
 
   /* ------------------------------------------------------------------ audio */
   var sound = {
@@ -263,7 +284,15 @@
     coin: function () { this.blip(880, 0.13, 'triangle', 0.13); },
     fuel: function () { this.blip(430, 0.24, 'sawtooth', 0.10); },
     mow: function () { this.noise(0.12, 0.10, 2400); },
-    crash: function () { this.noise(0.42, 0.28, 520); this.blip(110, 0.30, 'square', 0.12); }
+    crash: function () { this.noise(0.42, 0.28, 520); this.blip(110, 0.30, 'square', 0.12); },
+    power: function () {
+      this.blip(660, 0.18, 'triangle', 0.10);
+      this.blip(990, 0.14, 'triangle', 0.07);
+    },
+    boss: function () {
+      this.noise(0.50, 0.18, 420);
+      this.blip(150, 0.45, 'sawtooth', 0.12);
+    }
   };
 
   /* -------------------------------------------------------------- utilities */
@@ -316,6 +345,20 @@
     ui.speed.textContent = Math.round(state.speed * 3.6) + ' км/ч';
     ui.lives.textContent = '●'.repeat(Math.max(0, state.lives)) + '○'.repeat(Math.max(0, 3 - state.lives));
     ui.fuelFill.style.width = Math.round(clamp(state.fuel, 0, 1) * 100) + '%';
+    ui.floor.textContent = String(state.floor);
+    setPowerHud(ui.powerShield, ui.powerShieldT, state.shield);
+    setPowerHud(ui.powerMagnet, ui.powerMagnetT, state.magnet);
+    setPowerHud(ui.powerDouble, ui.powerDoubleT, state.doubleT);
+    ui.boss.classList.toggle('hidden', !state.boss.active);
+    ui.bossFill.style.width = state.boss.active
+      ? Math.round(clamp(state.boss.t / BOSS_DURATION, 0, 1) * 100) + '%'
+      : '0%';
+  }
+
+  function setPowerHud(chip, label, time) {
+    var active = time > 0;
+    chip.classList.toggle('active', active);
+    label.textContent = active ? Math.ceil(time) + 'с' : '0с';
   }
 
   /* --------------------------------------------------------------- textures */
@@ -426,7 +469,7 @@
   /* ------------------------------------------------------------------ scene */
   function buildCorridor() {
     var floorMat = mat('floor_tile', 0xffffff, { side: THREE.DoubleSide });
-    var wallMat = mat('wall_panel', 0xffffff, { side: THREE.DoubleSide });
+    wallMat = mat('wall_panel', 0xffffff, { side: THREE.DoubleSide });
     var ceilMat = mat('ceiling', 0xd8d8d8, { side: THREE.DoubleSide });
 
     var floor = makePlane(7.2, 200, floorMat);
@@ -615,6 +658,29 @@
     opponentGroup.add(opponentSprite);
   }
 
+  function buildBoss() {
+    bossGroup = new THREE.Group();
+    bossGroup.visible = false;
+    scene.add(bossGroup);
+    bossGroup.add(makeShadow(1.35, 0.75, 0.62));
+
+    bossSprite = makeSprite('body_neighbor', 1.9, 4.2);
+    bossSprite.position.set(0, 2.15, 0);
+    bossGroup.add(bossSprite);
+
+    var head = makeSprite('face_neighbor', 1.35, 1.35);
+    head.position.set(0.95, 4.05, 0.08);
+    bossGroup.add(head);
+
+    var halo = new THREE.Mesh(
+      new THREE.TorusGeometry(0.75, 0.085, 8, 20),
+      new THREE.MeshLambertMaterial({ color: 0xffd34a, emissive: 0x4a3300 })
+    );
+    halo.rotation.x = Math.PI / 2;
+    halo.position.set(0, 4.55, 0);
+    bossGroup.add(halo);
+  }
+
   function buildObstacleObject() {
     var g = new THREE.Group();
     g.visible = false;
@@ -696,8 +762,32 @@
     addBox(fuel, 0.16, 0.10, 0.16, mat('metal_dark', 0x333333), 0.12, 1.14, 0);
     g.add(fuel);
 
+    var power = new THREE.Group();
+    var shield = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.33),
+      new THREE.MeshLambertMaterial({ color: 0x4fd8ff, emissive: 0x0b3a55, transparent: true, opacity: 0.92 })
+    );
+    var magnet = new THREE.Mesh(
+      new THREE.TorusGeometry(0.27, 0.085, 8, 20, Math.PI * 1.6),
+      new THREE.MeshLambertMaterial({ color: 0xff7a6a, emissive: 0x4a1008 })
+    );
+    magnet.rotation.z = Math.PI * 0.2;
+    var double = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.31),
+      new THREE.MeshLambertMaterial({ color: 0xffd34a, emissive: 0x4a3300 })
+    );
+    shield.position.y = magnet.position.y = double.position.y = 0.78;
+    power.add(shield);
+    power.add(magnet);
+    power.add(double);
+    g.add(power);
+
     g.userData.coin = coin;
     g.userData.fuel = fuel;
+    g.userData.power = power;
+    g.userData.shield = shield;
+    g.userData.magnet = magnet;
+    g.userData.double = double;
     scene.add(g);
     return g;
   }
@@ -720,7 +810,7 @@
 
   function buildPools() {
     for (var i = 0; i < 26; i++) { obstacles.push(buildObstacleObject()); }
-    for (var j = 0; j < 14; j++) { pickups.push(buildPickupObject()); }
+    for (var j = 0; j < 20; j++) { pickups.push(buildPickupObject()); }
     for (var k = 0; k < 16; k++) { grassPatches.push(buildGrassObject()); }
   }
 
@@ -761,6 +851,7 @@
     for (var i = 0; i < SEG_COUNT; i++) { buildSegment(i); }
     buildPlayer();
     buildOpponent();
+    buildBoss();
     buildPools();
     buildParticles();
     resetWorld();
@@ -803,6 +894,10 @@
     obj.position.set(x, 0, z);
     obj.userData.coin.visible = (kind === 'coin');
     obj.userData.fuel.visible = (kind === 'fuel');
+    obj.userData.power.visible = POWER_KINDS.indexOf(kind) >= 0;
+    obj.userData.shield.visible = (kind === 'shield');
+    obj.userData.magnet.visible = (kind === 'magnet');
+    obj.userData.double.visible = (kind === 'double');
     obj.rotation.y = 0;
   }
 
@@ -836,6 +931,10 @@
   }
 
   function spawnWave() {
+    if (state.boss.active) {
+      state.waveTimer = 0.8;
+      return;
+    }
     var lanes = LANES.slice();
     // Shuffle lane order.
     for (var i = lanes.length - 1; i > 0; i--) {
@@ -848,14 +947,17 @@
     }
     var freeLane = lanes[Math.min(lanes.length - 1, count + Math.floor(Math.random() * 2))];
     var roll = Math.random();
-    if (roll < 0.14) {
+    if (roll < 0.10) {
       spawnPickup('fuel', freeLane, -55);
-    } else if (roll < 0.58) {
+    } else if (roll < 0.34) {
       spawnPickup('coin', freeLane, -55);
+    } else if (roll < 0.52) {
+      spawnPickup(pick(POWER_KINDS), freeLane, -55);
     } else {
       spawnGrass(freeLane, -55);
     }
-    state.waveTimer = Math.max(0.62, 1.55 - state.distance / 900) + Math.random() * 0.35;
+    state.waveTimer = Math.max(0.52, 1.55 - state.distance / 900 - (state.floor - 1) * 0.05)
+      + Math.random() * 0.35;
   }
 
   function deactivate(obj) {
@@ -866,6 +968,15 @@
 
   function hit(reason) {
     if (state.invuln > 0 || state.mode !== 'playing') { return; }
+    if (state.shield > 0) {
+      state.shield = 0;
+      state.invuln = 1.15;
+      state.shake = 0.35;
+      sound.power();
+      toast('Щит спас! Столкновение в ноль', 'gold');
+      updateHUD(true);
+      return;
+    }
     state.lives--;
     state.invuln = 1.35;
     state.shake = 0.9;
@@ -894,6 +1005,24 @@
     deactivate(obj);
   }
 
+  function collectPower(kind) {
+    var text;
+    if (kind === 'shield') {
+      state.shield = Math.min(16, state.shield + 10);
+      text = 'Щит! Следующее столкновение бесплатно';
+    } else if (kind === 'magnet') {
+      state.magnet = Math.min(16, state.magnet + 9);
+      text = 'Магнит! Монеты летят к косилке';
+    } else {
+      state.doubleT = Math.min(16, state.doubleT + 9);
+      text = '×2 к очкам на 9 секунд!';
+    }
+    state.bonus += 75;
+    sound.power();
+    toast(text + ' +75', 'gold');
+    updateHUD(true);
+  }
+
   function mowGrass(obj) {
     state.bonus += 60;
     spawnParticles(state.playerX, obj.position.z, 34);
@@ -903,7 +1032,7 @@
   }
 
   function updateObjects(dt, speed) {
-    var i, obj;
+    var i, obj, kind;
     for (i = 0; i < obstacles.length; i++) {
       obj = obstacles[i];
       if (!obj.userData.active) { continue; }
@@ -926,16 +1055,24 @@
       obj = pickups[i];
       if (!obj.userData.active) { continue; }
       obj.position.z += speed * dt;
-      if (obj.userData.kind === 'coin') {
+      kind = obj.userData.kind;
+      if (kind === 'coin') {
         obj.userData.coin.rotation.y += dt * 4.0;
         obj.position.y = Math.sin(state.t * 4 + i) * 0.08;
-      } else {
+        if (state.magnet > 0 && obj.position.z > -11 && obj.position.z < 5) {
+          obj.position.x = lerp(obj.position.x, state.playerX, Math.min(1, dt * 3.6));
+        }
+      } else if (kind === 'fuel') {
         obj.userData.fuel.rotation.y += dt * 1.2;
+      } else {
+        obj.userData.power.rotation.y += dt * 2.2;
+        obj.position.y = Math.sin(state.t * 5 + i) * 0.10;
       }
       if (obj.position.z > 8) { deactivate(obj); continue; }
-      if (Math.abs(obj.position.z) < 1.0 && Math.abs(obj.position.x - state.playerX) < 0.78) {
-        if (obj.userData.kind === 'coin') { collectCoin(obj); }
-        else { collectFuel(obj); }
+      if (Math.abs(obj.position.z) < 1.0 && Math.abs(obj.position.x - state.playerX) < 0.82) {
+        if (kind === 'coin') { collectCoin(obj); }
+        else if (kind === 'fuel') { collectFuel(obj); }
+        else { collectPower(kind); deactivate(obj); }
       }
     }
 
@@ -983,6 +1120,7 @@
   }
 
   function updateOpponent(dt, speed) {
+    if (state.boss.active) { return; }
     var o = state.opponent;
     if (!o.active) {
       state.opponentCooldown -= dt;
@@ -1020,6 +1158,64 @@
     }
   }
 
+  function startBoss() {
+    var b = state.boss;
+    b.active = true;
+    b.t = 0;
+    b.dropAt = 0.9;
+    b.x = 0;
+    b.nextAt += 500;
+    bossGroup.visible = true;
+    bossGroup.position.set(0, 0, -16);
+    ui.boss.classList.remove('hidden');
+    ui.bossFill.style.width = '0%';
+    ui.bossText.textContent = 'Сосед позвал старшего! Держись 8 секунд!';
+    toast('⚠ СТАРШИЙ ПО ПОДЪЕЗДУ!', 'bad');
+    sound.boss();
+    updateHUD(true);
+  }
+
+  function updateBoss(dt) {
+    var b = state.boss;
+    if (!b.active) {
+      if (state.distance >= b.nextAt && !state.opponent.active) { startBoss(); }
+      return;
+    }
+    b.t += dt;
+    b.x = Math.sin(b.t * 1.15) * 1.8;
+    bossGroup.position.set(b.x, 0, -16 + Math.sin(b.t * 0.8) * 1.2);
+    bossGroup.rotation.z = Math.sin(b.t * 6) * 0.035;
+    bossSprite.material.rotation = Math.sin(b.t * 6) * 0.06;
+
+    if (b.t >= b.dropAt) {
+      var lanes = LANES.slice();
+      for (var i = lanes.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = lanes[i]; lanes[i] = lanes[j]; lanes[j] = tmp;
+      }
+      var count = state.floor >= 3 ? 3 : 2;
+      for (var c = 0; c < count; c++) {
+        spawnObstacle(pick(TYPE_BAG), lanes[c], -30 - c * 1.2);
+      }
+      if (Math.random() < 0.55) { spawnPickup('coin', lanes[4], -29); }
+      b.dropAt = b.t + Math.max(0.85, 1.35 - state.floor * 0.05);
+      toast('Старший швыряет вёдра!', 'bad');
+    }
+    if (b.t >= BOSS_DURATION) { endBoss(); }
+  }
+
+  function endBoss() {
+    var b = state.boss;
+    b.active = false;
+    bossGroup.visible = false;
+    ui.boss.classList.add('hidden');
+    ui.bossFill.style.width = '0%';
+    state.bonus += 500;
+    toast('Старший отступил! +500', 'gold');
+    sound.power();
+    updateHUD(true);
+  }
+
   function resetPools() {
     obstacles.forEach(function (o) { o.userData.active = false; o.visible = false; o.position.z = -200; });
     pickups.forEach(function (o) { o.userData.active = false; o.visible = false; o.position.z = -200; o.position.y = 0; });
@@ -1040,6 +1236,14 @@
     state.lives = 3;
     state.fuel = 1;
     state.coins = 0;
+    state.floor = 1;
+    state.shield = 0;
+    state.magnet = 0;
+    state.doubleT = 0;
+    state.boss.active = false;
+    state.boss.nextAt = 500;
+    state.boss.t = 0;
+    state.boss.dropAt = 0;
     state.playerX = 0;
     state.steer = 0;
     state.jumpY = 0;
@@ -1055,7 +1259,11 @@
     ui.toast.className = 'toast';
     ui.flash.classList.remove('on');
     ui.taunt.classList.add('hidden');
+    ui.boss.classList.add('hidden');
+    ui.bossFill.style.width = '0%';
     opponentGroup.visible = false;
+    bossGroup.visible = false;
+    if (wallMat) { wallMat.color.setHex(0xffffff); }
     if (floorTex) { floorTex.offset.set(0, 0); }
     if (wallTex) { wallTex.offset.set(0, 0); }
     if (ceilingTex) { ceilingTex.offset.set(0, 0); }
@@ -1069,7 +1277,7 @@
 
   function updateWorld(dt, speed) {
     if (floorTex) { floorTex.offset.y -= speed * dt * 0.035; }
-    if (wallTex) { wallTex.offset.x += speed * dt * 0.010; }
+    // Wallpaper stays put: doors, lamps and bollards provide the sense of motion.
     if (ceilingTex) { ceilingTex.offset.y -= speed * dt * 0.022; }
     for (var i = 0; i < corridorSegments.length; i++) {
       var seg = corridorSegments[i];
@@ -1120,22 +1328,40 @@
 
   function updateGame(dt) {
     state.t += dt;
+    state.shield = Math.max(0, state.shield - dt);
+    state.magnet = Math.max(0, state.magnet - dt);
+    state.doubleT = Math.max(0, state.doubleT - dt);
     var boosting = input.gas && state.fuel > 0.02;
     if (boosting) {
       state.fuel = Math.max(0, state.fuel - dt * 0.13);
     } else {
       state.fuel = Math.min(1, state.fuel + dt * 0.022);
     }
-    var targetSpeed = 9 + Math.min(state.distance / 350, 1) * 7 + (boosting ? 6 : 0);
+    var targetSpeed = 9 + Math.min(state.distance / 350, 1) * 7
+      + (boosting ? 6 : 0) + (state.floor - 1) * 0.7;
     state.speed += (targetSpeed - state.speed) * Math.min(1, dt * 2.3);
     state.distance += state.speed * dt;
-    state.score = Math.floor(state.distance * 2) + state.bonus;
+    state.score = Math.floor(state.distance * 2 * (state.doubleT > 0 ? 2 : 1)) + state.bonus;
     state.invuln = Math.max(0, state.invuln - dt);
+
+    var newFloor = Math.floor(state.distance / 250) + 1;
+    if (newFloor !== state.floor) {
+      state.floor = newFloor;
+      if (wallMat) {
+        wallMat.color.setHex(FLOOR_COLORS[(newFloor - 1) % FLOOR_COLORS.length]);
+      }
+      var floorBonus = 100 * newFloor;
+      state.bonus += floorBonus;
+      toast('ЭТАЖ ' + newFloor + '! Новый цвет коридора +' + floorBonus, 'gold');
+      sound.power();
+      updateHUD(true);
+    }
 
     updatePlayer(dt, state.speed, true);
     updateWorld(dt, state.speed);
     updateObjects(dt, state.speed);
     updateOpponent(dt, state.speed);
+    updateBoss(dt);
     updateParticles(dt, state.speed);
     updateCamera(dt);
     updateHUD(false);
@@ -1182,6 +1408,9 @@
     if (state.mode === 'gameover') { return; }
     setState('gameover');
     playerGroup.visible = true;
+    state.boss.active = false;
+    bossGroup.visible = false;
+    ui.boss.classList.add('hidden');
     ui.flash.classList.remove('on');
     state.flashTimer = 0;
     ui.toast.className = 'toast';
@@ -1377,7 +1606,10 @@
     },
     start: startGame,
     pause: pauseGame,
-    resume: resumeGame
+    resume: resumeGame,
+    debugBoss: function () { if (state.mode === 'playing') { startBoss(); } },
+    debugPower: function (kind) { if (state.mode === 'playing') { collectPower(kind || 'shield'); } },
+    debugSkip: function (metres) { state.distance += metres || 0; }
   };
 
   function init() {
