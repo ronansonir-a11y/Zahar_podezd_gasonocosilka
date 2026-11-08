@@ -3,15 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0a1016">
-  <title>Захар: Косилка в подъезде</title>
+  <meta name="theme-color" content="#050608">
+  <title>Захар: Вечная лестница</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="game-root">
     <div id="canvas-wrap"></div>
     <div id="vignette"></div>
+    <div id="scanlines"></div>
     <div id="flash"></div>
+
+    <div id="scare" class="scare hidden">
+      <img src="textures/face_neighbor.png" alt="">
+      <span>ОН УЖЕ ЗА ТОБОЙ</span>
+    </div>
 
     <div id="hud" class="hud hidden">
       <div class="hud-left">
@@ -20,7 +26,8 @@
           <div class="hud-chip"><span>ДИСТАНЦИЯ</span><b id="distance">0 м</b></div>
           <div class="hud-chip"><span>СКОРОСТЬ</span><b id="speed">0 км/ч</b></div>
           <div class="hud-chip"><span>ЖИЗНИ</span><b id="lives" class="lives">●●●</b></div>
-          <div class="hud-chip floor-chip"><span>ЭТАЖ</span><b id="floor">1</b></div>
+          <div class="hud-chip floor-chip"><span>ЭТАЖ</span><b id="floor">1/5</b></div>
+          <div class="hud-chip loop-chip"><span>КРУГ</span><b id="loop">1</b></div>
         </div>
       </div>
       <div class="hud-right">
@@ -29,24 +36,24 @@
           <span>ГАЗ / БЕНЗИН</span>
           <div class="bar"><i id="fuel-fill"></i></div>
         </div>
-        <div id="perf" class="perf"><b id="fps">60 FPS</b><span id="quality-label">АВТО</span></div>
+        <div id="perf" class="perf"><b id="fps">60 FPS</b><span id="quality-label">ПЛОХО · 75%</span></div>
       </div>
 
       <div id="powerups" class="powerups">
-        <div class="power-chip shield" id="power-shield"><span>ЩИТ</span><b id="power-shield-t">0с</b></div>
-        <div class="power-chip magnet" id="power-magnet"><span>МАГНИТ</span><b id="power-magnet-t">0с</b></div>
+        <div class="power-chip shield" id="power-shield"><span>ИКОНКА</span><b id="power-shield-t">0с</b></div>
+        <div class="power-chip magnet" id="power-magnet"><span>СВЕЧА</span><b id="power-magnet-t">0с</b></div>
         <div class="power-chip double" id="power-double"><span>×2 ОЧКИ</span><b id="power-double-t">0с</b></div>
       </div>
 
       <div id="boss" class="boss hidden">
-        <div class="boss-title">⚠ СТАРШИЙ ПО ПОДЪЕЗДУ ⚠</div>
+        <div class="boss-title">⚠ ХОЗЯИН ЛЕСТНИЦЫ ⚠</div>
         <div class="boss-bar"><i id="boss-fill"></i></div>
-        <span id="boss-text">Сосед позвал старшего!</span>
+        <span id="boss-text">Кто-то идёт сверху!</span>
       </div>
 
       <div id="taunt" class="taunt hidden">
         <img src="textures/portrait_neighbor.png" alt="Сосед">
-        <span id="taunt-text">Сосед: «Не проедешь!»</span>
+        <span id="taunt-text">Сосед: «Ты уже был на этом этаже…»</span>
       </div>
       <div id="toast" class="toast"></div>
     </div>
@@ -72,35 +79,30 @@
           <div class="vs">VS</div>
           <div class="portrait-card villain">
             <img src="textures/portrait_neighbor.png" alt="Сосед">
-            <span>СОСЕД</span>
+            <span>ТЕНЬ</span>
           </div>
         </div>
-        <h1>КОСИЛКА<br><em>В ПОДЪЕЗДЕ</em></h1>
-        <p class="tagline">Захар прокатился на газонокосилке по коридору. Сосед со второго фото уже расставил вёдра и конусы. Прорвись как можно дальше!</p>
+        <h1>ВЕЧНАЯ<br><em>ЛЕСТНИЦА</em></h1>
+        <p class="tagline">Пятиэтажка без выхода. Захар на газонокосилке катится по бесконечной лестнице: 1, 2, 3, 4, 5 и снова 1. На площадке стоит сосед со второго фото. Свет мигает, этажи повторяются, дверь всё та же.</p>
         <div class="instructions">
           <div><span class="key">◀ ▶</span> руль или свайп по экрану</div>
           <div><span class="key">ГАЗ</span> ускорение, тратит бензин</div>
           <div><span class="key">ПРЫЖОК</span> перескочить низкое препятствие</div>
-          <div><span class="key">★</span> монеты, канистры и скошенная трава дают очки</div>
-          <div><span class="key">◆</span> бонусы: щит, магнит и ×2 к очкам</div>
-          <div><span class="key">ЭТАЖ</span> каждые 250 м новый цвет и выше скорость</div>
-          <div><span class="key">⚠</span> каждые 500 м приходит старший по подъезду</div>
+          <div><span class="key">★</span> монеты, канистры и трава дают очки</div>
+          <div><span class="key">◆</span> иконка, свеча и ×2 к очкам</div>
+          <div><span class="key">ЭТАЖ</span> 1 → 5 → 1, каждый круг быстрее</div>
+          <div><span class="key">⚠</span> каждые 500 м приходит Хозяин лестницы</div>
         </div>
-        <div class="quality-picker">
-          <span>ГРАФИКА</span>
-          <button type="button" class="q-btn active" data-quality="auto">АВТО</button>
-          <button type="button" class="q-btn" data-quality="high">МАКС</button>
-          <button type="button" class="q-btn" data-quality="low">ЭКОНОМ</button>
-        </div>
-        <button id="start-btn" type="button" class="big-btn">ПОЕХАЛИ!</button>
-        <small>3 жизни · PBR-свет, мягкие тени и авто-FPS · без интернета</small>
+        <div class="low-badge">НАМЕРЕННО ПЛОХАЯ ГРАФИКА · 75% · БЕЗ ТЕНЕЙ</div>
+        <button id="start-btn" type="button" class="big-btn">СПУСТИТЬСЯ?</button>
+        <small>3 жизни · пиксельные текстуры · без PBR, теней и свечения · без интернета</small>
       </div>
     </div>
 
     <div id="pause" class="overlay hidden">
       <div class="panel small-panel">
         <h2>ПАУЗА</h2>
-        <p>Двигатель на холостых. Сосед пока не добежал.</p>
+        <p>Двигатель стих. На площадке кто-то стоит.</p>
         <button id="resume-btn" type="button" class="big-btn">ПРОДОЛЖИТЬ</button>
         <button id="restart-pause-btn" type="button" class="ghost-btn">ЗАНОВО</button>
       </div>
@@ -108,17 +110,17 @@
 
     <div id="gameover" class="overlay hidden">
       <div class="panel small-panel">
-        <h2>КОСИЛКА ЗАГЛОХЛА!</h2>
+        <h2>ЛЕСТНИЦА НЕ ОТПУСТИЛА</h2>
         <p class="result">Счёт: <b id="final-score">0</b><br>Рекорд: <b id="best-score">0</b></p>
-        <p id="gameover-comment" class="comment">Сосед доволен.</p>
-        <button id="restart-btn" type="button" class="big-btn">ЕЩЁ РАЗ</button>
+        <p id="gameover-comment" class="comment">Снова первый этаж.</p>
+        <button id="restart-btn" type="button" class="big-btn">ЕЩЁ КРУГ</button>
       </div>
     </div>
 
     <div id="loading" class="overlay">
       <div class="loader">
         <div class="spinner"></div>
-        <span>Загружаем подъезд и текстуры…</span>
+        <span>Открываем подъезд…</span>
       </div>
     </div>
 

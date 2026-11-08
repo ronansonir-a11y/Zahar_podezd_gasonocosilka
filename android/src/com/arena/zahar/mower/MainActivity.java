@@ -12,9 +12,11 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 /**
- * Minimal full-screen WebView shell.  The whole game lives in assets/index.html
- * and uses WebGL through Three.js.  No network access and no runtime permissions
- * are required: everything is loaded from file:///android_asset/.
+ * Minimal full-screen WebView shell.  The low-fi horror game lives in
+ * assets/index.html and uses WebGL through Three.js.  No network access and no
+ * runtime permissions are required: everything is loaded from
+ * file:///android_asset/.  The WebView is tuned for cheap, low-resolution
+ * rendering so the game stays smooth on modest phones.
  */
 @SuppressLint("SetJavaScriptEnabled")
 public class MainActivity extends Activity {

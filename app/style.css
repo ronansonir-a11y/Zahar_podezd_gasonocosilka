@@ -795,3 +795,226 @@ h2 {
   .quality-picker { padding: 3px 6px; margin-bottom: 5px; }
   .q-btn { padding: 3px 7px; font-size: 9px; }
 }
+
+/* ============================================================
+   HORROR / LOW-FI OVERRIDES
+   Намеренно «плохая» графика: тёмная палитра, пиксельные полосы,
+   никаких свечений и мягких градиентов из премиальной версии.
+   ============================================================ */
+:root {
+  --red: #8f1d1d;
+  --green: #6e8a5b;
+  --gold: #c9b273;
+  --violet: #6b5d7a;
+  --ink: #030405;
+  --panel: rgba(6, 8, 9, 0.94);
+}
+
+html, body {
+  background: #030405;
+  color: #cfc9bd;
+}
+
+#game-root {
+  background: #030405;
+}
+
+#vignette {
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(0, 0, 0, 0) 28%, rgba(0, 0, 0, 0.55) 68%, rgba(0, 0, 0, 0.92) 100%),
+    linear-gradient(180deg, rgba(40, 58, 44, 0.06), rgba(0, 0, 0, 0.28));
+}
+
+#scanlines {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 16;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.26) 0px,
+    rgba(0, 0, 0, 0.26) 1px,
+    rgba(0, 0, 0, 0) 1px,
+    rgba(0, 0, 0, 0) 3px
+  );
+  opacity: 0.58;
+}
+
+#flash {
+  background: radial-gradient(circle, rgba(90, 0, 0, 0.1) 0%, rgba(70, 0, 0, 0.86) 100%);
+}
+
+.scare {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  background: rgba(12, 0, 0, 0.9);
+}
+
+.scare img {
+  width: 36vmin;
+  height: 36vmin;
+  object-fit: contain;
+  filter: grayscale(0.7) contrast(1.55) brightness(0.85);
+  animation: scareShake 90ms steps(2, end) infinite;
+}
+
+.scare span {
+  font-size: 4vmin;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: #ffd9d0;
+  text-shadow: 0 0 16px #a01010, 3px 3px 0 #300;
+  animation: scareShake 110ms steps(2, end) infinite;
+}
+
+@keyframes scareShake {
+  0% { transform: translate(-2px, 1px); }
+  50% { transform: translate(2px, -1px); }
+  100% { transform: translate(-1px, 2px); }
+}
+
+.panel,
+.loader {
+  background: var(--panel);
+  border: 1px solid rgba(140, 30, 25, 0.55);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.65), 0 14px 46px rgba(0, 0, 0, 0.85);
+}
+
+.hud-box,
+.hud-chip,
+.fuel-box,
+.perf,
+.power-chip,
+.boss,
+.taunt,
+.toast {
+  background: rgba(5, 7, 8, 0.84);
+  border-color: rgba(130, 45, 38, 0.42);
+}
+
+.hud-box {
+  border-color: rgba(170, 60, 45, 0.6);
+}
+
+.hud-box strong,
+.result b {
+  color: var(--gold);
+  text-shadow: 0 0 8px rgba(180, 40, 30, 0.5);
+}
+
+.hud-box span,
+.hud-chip span,
+.fuel-box > span,
+.menu-panel small {
+  color: #938d83;
+}
+
+.loop-chip b {
+  color: #d7a6a0;
+}
+
+.perf span {
+  color: #9a8f7f;
+}
+
+.instructions {
+  background: rgba(120, 30, 24, 0.09);
+  border-color: rgba(140, 50, 40, 0.32);
+  color: #c8c1b5;
+}
+
+.key {
+  background: rgba(110, 138, 91, 0.14);
+  border-color: rgba(110, 138, 91, 0.38);
+  color: #c9d6bb;
+}
+
+.tagline,
+.small-panel p {
+  color: #b9b2a6;
+}
+
+.portrait-card img {
+  border-color: #7a2420;
+  box-shadow: 0 0 14px rgba(140, 20, 18, 0.45);
+  filter: grayscale(0.35) contrast(1.1);
+}
+
+.portrait-card.villain img {
+  border-color: #5c4b66;
+  box-shadow: 0 0 14px rgba(90, 60, 105, 0.45);
+  filter: grayscale(0.7) brightness(0.75);
+}
+
+.vs {
+  color: #b7a06f;
+  text-shadow: 0 0 10px rgba(130, 20, 18, 0.6);
+}
+
+h1 {
+  color: #ddd4c4;
+  text-shadow: 0 4px 0 #4a1210, 0 0 18px rgba(150, 20, 18, 0.55);
+}
+
+h1 em {
+  color: #b7a06f;
+  text-shadow: 0 3px 0 #3a2c0d;
+}
+
+h2 {
+  color: #c9b273;
+  text-shadow: 0 0 12px rgba(140, 25, 20, 0.5);
+}
+
+.big-btn {
+  background: linear-gradient(180deg, #9c2b24, #5e1412);
+  box-shadow: 0 6px 0 #360b0a, 0 10px 24px rgba(120, 15, 12, 0.45);
+  text-shadow: 0 2px 2px rgba(30, 0, 0, 0.8);
+}
+
+.big-btn:active {
+  box-shadow: 0 2px 0 #360b0a, 0 6px 16px rgba(120, 15, 12, 0.4);
+}
+
+.ghost-btn {
+  border-color: rgba(180, 90, 75, 0.4);
+  color: #c4bcae;
+}
+
+.low-badge {
+  display: inline-block;
+  margin: 0 auto 10px;
+  padding: 6px 14px;
+  border: 1px dashed rgba(170, 70, 55, 0.55);
+  border-radius: 4px;
+  background: rgba(60, 12, 10, 0.28);
+  color: #c8b39c;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.spinner {
+  border-top-color: #8f1d1d;
+}
+
+.comment {
+  color: #a79e91 !important;
+}
+
+@media (orientation: portrait) {
+  .low-badge { font-size: 8px; padding: 4px 8px; letter-spacing: 1px; }
+  .scare span { font-size: 5vmin; letter-spacing: 3px; }
+}
+
+@media (max-height: 420px) {
+  .low-badge { display: none; }
+  .scare img { width: 28vmin; height: 28vmin; }
+}
